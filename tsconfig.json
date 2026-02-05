@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    // File Layout
+    "rootDir": "./",             
+    "outDir": "./dist",          
+
+    // Environment Settings
+    "module": "NodeNext",        
+    "moduleResolution": "NodeNext",
+    "target": "ESNext",
+    
+    // Other Outputs
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+
+    // Stricter Typechecking Options
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+
+    // Recommended Options
+    "strict": true,
+    "esModuleInterop": true,     
+    
+    // Set to false to prevent TS1295 error regarding imports
+    "verbatimModuleSyntax": false, 
+    
+    "skipLibCheck": true,
+
+  },
+  
+  // Explicitly include both source code and tests
+  "include": ["src/**/*", "tests/**/*"],
+  
+  // Configuration for ts-node to handle ESM imports correctly
+  "ts-node": {
+    "esm": true,
+    "experimentalSpecifierResolution": "node"
+  }
+}

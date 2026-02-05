@@ -1,0 +1,22 @@
+# Dependencies
+node_modules
+
+# Build Output
+dist
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
+
+# IDE Settings (Optional but recommended)
+.vscode
+.idea
+*.swp
+
+# Testing
+coverage

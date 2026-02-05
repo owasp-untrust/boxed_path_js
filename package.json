@@ -1,0 +1,31 @@
+{
+  "name": "untrust-ts",
+  "version": "1.0.0",
+  "description": "A secure, drop-in replacement for Node.js path module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "node --loader ts-node/esm tests/validator.test.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "security",
+    "path-traversal",
+    "owasp",
+    "untrust",
+    "path-validation",
+    "secure-path"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.0.0"
+  }
+}
