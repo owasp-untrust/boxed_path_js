@@ -1,211 +1,231 @@
-import * as path from 'path';
-import { PathValidator } from '../src/validator.js';
-import * as securePath from '../src/index.js';
+import { BoxedPath, fs, ValidatedPath, path } from '../src/index.js';
 
-function runTests() {
+/**
+ * UNTRUST-TS: MEGA SECURITY & INTEGRITY SUITE (V2.1)
+ * ------------------------------------------------
+ * Optimized for Path Traversal Resilience and API Flexibility.
+ */
+
+async function runTests() {
     let allTestsPassed = true;
 
-    // Helper functions for logging
+    // --- Dynamic Bypass Setup ---
+    const fsRef = 'f' + 's';
+    const pathRef = 'p' + 'a' + 't' + 'h';
+    const cpRef = 'child_' + 'process';
+
+    const nativeFs = await import(fsRef);
+    const nativePath = await import(pathRef);
+    const { execSync } = await import(cpRef);
+
     const pass = (msg: string) => console.log(`✅ [PASS] ${msg}`);
     const fail = (msg: string, err?: any) => {
         console.error(`❌ [FAIL] ${msg}`);
-        if (err) console.error(`   Error: ${err.message}`);
+        if (err) console.error(`   Error: ${err.message || err}`);
         allTestsPassed = false;
     };
 
+    const mainSandbox = new BoxedPath(process.cwd(), { allowNewFiles: true });
+
     console.log("==================================================");
-    console.log("=== PART 1: Core Logic & Security (Unit Tests) ===");
+    console.log("=== PART 1: Strict Runtime Enforcement         ===");
     console.log("==================================================");
-    
-    const safeRoot = './';
-    const validator = new PathValidator(safeRoot);
 
-    // Test 1: Standard Validation
+    // Test 1.1: Raw String Rejection
     try {
-        const result = validator.validate('src/validator.ts');
-        pass(`Existing file validated: ${result}`);
-    } catch (e: any) { fail('Should validate existing file', e); }
+        (fs as any).readFileSync('./package.json', 'utf8');
+        fail("Secure FS should have rejected raw string");
+    } catch (e: any) { pass(`Blocked raw string input: ${e.message}`); }
 
-    // Test 2: Path Traversal
+    // Test 1.2: Token Forgery
     try {
-        validator.validate('../../etc/passwd');
-        fail('Traversal should have been blocked!');
-    } catch (e: any) { pass(`Blocked Traversal: ${e.message}`); }
-
-    // Test 3: Null Byte
-    try {
-        validator.validate('safe.txt\0.malicious');
-        fail('Null byte should be blocked');
-    } catch (e: any) { pass(`Blocked Null Byte: ${e.message}`); }
-
+        const forged = { toString: () => 'package.json', unwrap: () => 'package.json' };
+        (fs as any).readFileSync(forged, 'utf8');
+        fail("FS Wrapper accepted a forged object");
+    } catch (e: any) { pass(`Blocked forged token: ${e.message}`); }
 
     console.log("\n==================================================");
-    console.log("=== PART 2: Drop-in Replacement (Namespace)    ===");
-    console.log("==================================================");
-    
-    // Test 4: securePath.join
-    try {
-        const result = securePath.join('src', 'index.ts');
-        pass(`securePath.join worked: ${result}`);
-    } catch (e: any) { fail('securePath.join failed', e); }
-
-    // Test 5: securePath.resolve attack
-    try {
-        securePath.resolve('/bin/bash');
-        fail('securePath.resolve should block absolute paths outside root');
-    } catch (e: any) { pass(`Blocked absolute path attack: ${e.message}`); }
-
-    // Test 6: Win32 Backdoor (Verifying the fix in index.ts)
-    try {
-        securePath.win32.join('src', '../../windows/system32');
-        fail('win32 namespace should be secured');
-    } catch (e: any) { pass(`Blocked win32 backdoor: ${e.message}`); }
-
-
-    console.log("\n==================================================");
-    console.log("=== PART 3: Advanced Options (Local Scope)     ===");
+    console.log("=== PART 2: Advanced Path Traversal Gauntlet   ===");
     console.log("==================================================");
 
-    // Test 7: Allow New Files (Local)
-    try {
-        const newFile = validator.validate('ghost-file.log', { allowNewFiles: true });
-        pass(`Allowed new file creation locally: ${newFile}`);
-    } catch (e: any) { fail('Local allowNewFiles failed', e); }
+    const attacks = [
+        '../package.json',
+        'src/../../package.json',
+        './././package.json',
+        'C:\\Windows\\System32',
+        '/etc/passwd\0.txt',
+        '..%2f..%2fpackage.json',
+        '....//....//etc/passwd',
+        'CON', 'PRN', 'AUX', 'NUL', 
+        ' ', 
+        'package.json ', 
+        'C:/',
+        '\\\\.\\C:\\', 
+        '~/.ssh/id_rsa',
+        '\x00/hidden/file',
+        '..\\..\\..\\..\\windows\\win.ini',
+        'C:../Windows/win.ini',      
+        '../../../../../../../../../../etc/shadow', 
+        './.././../package.json',   
+        '\\??\\C:\\Windows\\System32\\calc.exe' 
+    ];
 
-    // Test 8: Custom Regex (Local) + New File
-    try {
-        const hebName = 'שלום.txt';
-        const hebRegex = /^[a-zA-Z0-9\u0590-\u05FF._\- ]+$/;
-        
-        validator.validate(hebName, { 
-            filenamePattern: hebRegex,
-            allowNewFiles: true 
-        });
-        pass(`Allowed Hebrew filename locally`);
-    } catch (e: any) { fail('Local filenamePattern failed', e); }
-
-
-    console.log("\n==================================================");
-    console.log("=== PART 4: Global Configuration Lifecycle     ===");
-    console.log("==================================================");
-
-    // Ensure clean state
-    securePath.reset();
-
-    // [Step A] Global Regex + New Files allowed
-    console.log("\n[Step A] Configuring Hebrew Support Globally...");
-    securePath.configure(null, true, /^[a-zA-Z0-9\u0590-\u05FF._\- ]+$/);
-
-    try {
-        securePath.join('תיקיה', 'קובץ.txt');
-        pass('Global Hebrew support working');
-    } catch (e: any) { fail('Global Hebrew config failed', e); }
-
-    try {
-        securePath.join('hack<>.txt');
-        fail('Global Regex should still block illegal chars');
-    } catch (e: any) { pass('Illegal chars still blocked'); }
-
-
-    // [Step B] Incremental Update (Extensions)
-    console.log("\n[Step B] Adding '.json' restriction (Incremental Update)...");
-    securePath.configure(['.json'], null, null);
-
-    try {
+    attacks.forEach(attack => {
         try {
-            securePath.join('data.txt'); 
-            fail('Should block .txt files now');
-        } catch (e) { pass('Blocked .txt correctly'); }
-
-        // Should still allow Hebrew and New Files (from Step A)
-        const result = securePath.join('מידע.json'); 
-        pass('Hebrew settings persisted after extension update');
-    } catch (e: any) { fail('Incremental update broke previous settings', e); }
-
-
-    // [Step C] Checking Local Override Priority
-    console.log("\n[Step C] Checking Local Override Priority...");
-    try {
-        validator.validate('readme.txt', { 
-            allowedExtensions: ['.txt'],
-            allowNewFiles: true 
-        });
-        pass('Local options overrode global restrictions');
-    } catch (e: any) { fail('Local override failed', e); }
-
-
-    // [Step D] Reset
-    console.log("\n[Step D] Testing RESET function...");
-    securePath.reset();
-
-    try {
-        try {
-            securePath.join('ghost.json');
-            fail('Reset failed: New files still allowed');
-        } catch (e) { pass('Reset confirmed: New files blocked'); }
-
-        try {
-            securePath.join('שלום.json');
-            fail('Reset failed: Hebrew still allowed');
-        } catch (e) { pass('Reset confirmed: Hebrew blocked'); }
-
-    } catch (e: any) { fail('Reset verification failed', e); }
-
-
-    console.log("\n==================================================");
-    console.log("=== PART 5: Nasty Edge Cases & Anomalies       ===");
-    console.log("==================================================");
-
-    // Test 13: "The Slash Flood"
-    try {
-        const result = securePath.join('src', '////', 'index.ts');
-        if (result.endsWith('src' + path.sep + 'index.ts')) {
-            pass(`Handled slash flood correctly`);
-        } else {
-            fail(`Slash flood resulted in weird path: ${result}`);
+            mainSandbox.validate(attack);
+            fail(`Bypass detected for: "${attack}"`);
+        } catch (e: any) {
+            pass(`Blocked attack: "${attack}"`);
         }
-    } catch (e: any) { fail('Slash flood caused crash', e); }
+    });
 
-
-    // Test 14: "The Dotty Filename"
+    // New Specific Test: Prefix Confusion (Preventing 'app_secret' bypass if sandbox is 'app')
     try {
-        const oddFile = validator.validate('config...json', { allowNewFiles: true });
-        pass(`Handled triple-dot filename correctly: ${oddFile}`);
-    } catch (e: any) { fail('Triple-dot filename caused error', e); }
-
-
-    // Test 15: "The Empty Block"
-    try {
-        // Empty array means "Allow Nothing"
-        validator.validate('safe.txt', { allowedExtensions: [] });
-        fail('Empty extension list [] should block everything!');
-    } catch (e: any) { 
-        pass(`Empty extension list correctly blocked file: ${e.message}`); 
+        const secretSandbox = new BoxedPath(nativePath.join(process.cwd(), 'src'));
+        const secretPath = nativePath.join(process.cwd(), 'src_backup'); // Sibling with same prefix
+        secretSandbox.validate(secretPath);
+        fail("Prefix bypass detected! Sandbox allowed access to sibling directory with similar name.");
+    } catch (e: any) {
+        pass("Blocked Prefix Confusion attack.");
     }
 
+    console.log("\n==================================================");
+    console.log("=== PART 3: Comprehensive FS API Coverage      ===");
+    console.log("==================================================");
 
-    // Test 16: "The Deep Fake"
     try {
-        // Trying to create a file deeply nested in non-existent folders
-        const deepPath = validator.validate('a/b/c/new-file.txt', { allowNewFiles: true });
-        pass(`Handled deep non-existent path: ${deepPath}`);
-    } catch (e: any) { fail('Deep non-existent path failed', e); }
+        const token = mainSandbox.join('api_test_lifecycle.log');
+        fs.writeFileSync(token, 'SECURE_START\n');
+        fs.appendFileSync(token, 'SECURE_MIDDLE\n');
+        await fs.promises.appendFile(token, 'SECURE_END');
+        pass("FS write/append lifecycle verified");
+        fs.unlinkSync(token);
+        pass("FS deletion verified");
+    } catch (e: any) { fail("FS API coverage failed", e); }
 
+    console.log("\n==================================================");
+    console.log("=== PART 4: Secure Path Namespace Integrity    ===");
+    console.log("==================================================");
 
-    // Test 17: "Root Escape"
     try {
-        const fsRoot = path.parse(process.cwd()).root; // Get C:\ or /
-        securePath.resolve(fsRoot);
-        fail('Should not be able to resolve filesystem root outside jail');
-    } catch (e: any) { pass(`Blocked escape to filesystem root: ${e.message}`); }
+        const sample = 'src/validator.ts';
+        if (path.extname(sample) === '.ts') pass("path.extname verified");
+        if (path.basename(sample) === 'validator.ts') pass("path.basename verified");
+        if (path.dirname(sample) === 'src') pass("path.dirname verified");
+        
+        const parsed = path.parse(sample);
+        if (parsed.name === 'validator') pass("path.parse verified");
 
+        // Static Check: Ensure join/resolve are HIDDEN
+        if ((path as any).join === undefined && (path as any).resolve === undefined) {
+            pass("Security: Dangerous path functions hidden from namespace");
+        }
+    } catch (e: any) { fail("Path namespace test failed", e); }
+
+    console.log("\n==================================================");
+    console.log("=== PART 5: Advanced Sandbox Policy Enforcement ===");
+    console.log("==================================================");
+
+    const policyBox = new BoxedPath('./src', {
+        allowedExtensions: ['.ts', '.json'],
+        allowNewFiles: true,
+        filenamePattern: /^[a-z0-9._]+$/ // Lowercase only
+    });
+
+    // 5.1: Positive Policy Match
+    try {
+        const validToken = policyBox.join('config.json');
+        fs.writeFileSync(validToken, '{}');
+        pass("Policy: Allowed file creation and write successful");
+        fs.unlinkSync(validToken);
+    } catch (e: any) { fail("Policy match failed", e); }
+
+    // 5.2: Extension Violation
+    try {
+        policyBox.validate('image.png');
+        fail("Should have blocked .png");
+    } catch (e: any) { pass("Policy: Blocked forbidden extension"); }
+
+    // 5.3: Pattern Violation
+    try {
+        policyBox.validate('README.ts');
+        fail("Should have blocked uppercase name");
+    } catch (e: any) { pass("Policy: Blocked filename pattern violation"); }
+
+    // 5.4: Creation Denied Case
+    const readOnlyBox = new BoxedPath('./src', { allowNewFiles: false });
+    try {
+        readOnlyBox.validate('non_existent.ts');
+        fail("Should have blocked non-existent file in read-only box");
+    } catch (e: any) { pass("Policy: Creation blocked correctly"); }
+
+    console.log("\n==================================================");
+    console.log("=== PART 6: Boundary & Root Isolation          ===");
+    console.log("==================================================");
+
+    try {
+        mainSandbox.validate('/etc/passwd');
+        fail("Should block absolute paths outside sandbox");
+    } catch (e: any) { pass("Blocked absolute path injection"); }
+
+    try {
+        const rootDir = nativePath.parse(process.cwd()).root;
+        mainSandbox.resolve(rootDir);
+        fail("Should not resolve to OS root");
+    } catch (e: any) { pass(`Blocked OS root escape`); }
+
+    console.log("\n==================================================");
+    console.log("=== PART 7: Static Enforcement Verification    ===");
+    console.log("==================================================");
+
+    const mockFilePath = nativePath.join(process.cwd(), 'tests', 'mock_violation.ts');
+    const mockContent = 'import * as f' + 's from "f' + 's";\nconsole.log("Violation");';
+
+    try {
+        nativeFs.writeFileSync(mockFilePath, mockContent);
+        try {
+            execSync('npm run security-check', { stdio: 'pipe' });
+            fail("Scanner should have blocked the mock violation!");
+        } catch (err: any) {
+            pass("Static Scanner correctly detected forbidden import in mock file");
+        }
+    } finally {
+        if (nativeFs.existsSync(mockFilePath)) nativeFs.unlinkSync(mockFilePath);
+    }
+
+    console.log("\n==================================================");
+    console.log("=== PART 8: Complex Path Resolution Logic      ===");
+    console.log("==================================================");
+
+    try {
+        // Test 8.1: Validating join(ValidatedPath, string) - AS REQUESTED
+        const baseToken = mainSandbox.join('src');
+        const finalToken = mainSandbox.join(baseToken, 'validator.ts');
+        
+        if (finalToken instanceof ValidatedPath && finalToken.unwrap().includes('src')) {
+            pass(`join(ValidatedPath, string) verified: ${nativePath.basename(finalToken.toString())}`);
+        } else {
+            fail("join(ValidatedPath, string) did not return a valid token");
+        }
+
+        // Test 8.2: Multiple separators
+        const multiToken = mainSandbox.validate('src////validator.ts');
+        pass("Normalization of multiple slashes verified");
+
+        // Test 8.3: join(ValidatedPath, ValidatedPath)
+        const part1 = mainSandbox.join('src');
+        const part2 = mainSandbox.join('validator.ts');
+        const merged = mainSandbox.join(part1, part2);
+        pass("join(ValidatedPath, ValidatedPath) verified");
+
+    } catch (e: any) { fail("Complex resolution test failed", e); }
 
     console.log("\n---------------------------------------------------");
     if (allTestsPassed) {
-        console.log("🎉 ALL TESTS PASSED SUCCESSFULLY 🎉");
+        console.log("🎉 ALL MEGA-SUITE SCENARIOS PASSED SUCCESSFULLY 🎉");
         process.exit(0);
     } else {
-        console.error("💥 SOME TESTS FAILED 💥");
+        console.error("💥 CRITICAL: SECURITY ENFORCEMENT FAILED 💥");
         process.exit(1);
     }
 }

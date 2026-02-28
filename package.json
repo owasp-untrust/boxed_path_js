@@ -1,27 +1,33 @@
 {
   "name": "untrust-ts",
-  "version": "1.0.0",
-  "description": "A secure, drop-in replacement for Node.js path module",
+  "version": "1.1.0",
+  "description": "A secure path and FS enforcement framework for Node.js to prevent Path Traversal by design.",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
   "type": "module",
+  "bin": {
+    "untrust-ts-scan": "./dist/scripts/run-security-scan.js"
+  },
   "files": [
     "dist"
   ],
   "scripts": {
+    "security-check": "node --loader ts-node/esm ./scripts/run-security-scan.ts",
+    "prebuild": "npm run security-check",
     "build": "tsc",
+    "pretest": "npm run security-check",
     "test": "node --loader ts-node/esm tests/validator.test.ts",
+    "predemo": "npm run security-check",
+    "demo": "node --loader ts-node/esm demo.ts",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
     "security",
     "path-traversal",
-    "owasp",
-    "untrust",
-    "path-validation",
-    "secure-path"
+    "enforcement",
+    "secure-fs"
   ],
-  "author": "",
+  "author": "Or Bibi",
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^22.0.0",

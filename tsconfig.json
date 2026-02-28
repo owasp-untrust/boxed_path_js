@@ -1,11 +1,11 @@
 {
   "compilerOptions": {
     // File Layout
-    "rootDir": "./",             
-    "outDir": "./dist",          
+    "rootDir": "./", 
+    "outDir": "./dist", 
 
     // Environment Settings
-    "module": "NodeNext",        
+    "module": "NodeNext", 
     "moduleResolution": "NodeNext",
     "target": "ESNext",
     
@@ -20,17 +20,20 @@
 
     // Recommended Options
     "strict": true,
-    "esModuleInterop": true,     
+    "esModuleInterop": true, 
     
     // Set to false to prevent TS1295 error regarding imports
     "verbatimModuleSyntax": false, 
     
-    "skipLibCheck": true,
-
+    "skipLibCheck": true
   },
   
-  // Explicitly include both source code and tests
-  "include": ["src/**/*", "tests/**/*"],
+  // Explicitly include source code, tests, and scripts for CLI usage
+  "include": [
+    "src/**/*", 
+    "tests/**/*", 
+    "scripts/**/*"
+  ],
   
   // Configuration for ts-node to handle ESM imports correctly
   "ts-node": {

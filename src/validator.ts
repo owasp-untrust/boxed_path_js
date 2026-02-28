@@ -1,128 +1,164 @@
 import * as path from 'path';
 import * as fs from 'fs';
 
-export interface ValidatorOptions {
-    allowedExtensions?: string[];
-    allowNewFiles?: boolean;
-    filenamePattern?: RegExp;
+/**
+ * ValidatedPath: A security token representing a sanitized, verified path.
+ * This ensures that only paths processed by the BoxedPath engine can be used in FS operations,
+ * effectively preventing raw string injection at runtime.
+ */
+export class ValidatedPath {
+    private readonly validatedString: string;
+    constructor(pathValue: string) { this.validatedString = pathValue; }
+    public toString(): string { return this.validatedString; }
+    public unwrap(): string { return this.validatedString; }
 }
 
-export class PathValidator {
+/**
+ * Configuration options for the Sandbox engine.
+ */
+export interface BoxedOptions {
+    allowedExtensions?: string[]; // Whitelist of allowed file extensions (e.g., ['.json', '.txt'])
+    allowNewFiles?: boolean;      // Whether to allow access to paths that don't exist yet
+    filenamePattern?: RegExp;     // Custom regex for filename validation
+}
+
+/**
+ * BoxedPath: The core Sandbox engine that enforces Zero Trust file access.
+ * It prevents Path Traversal, Symlink escapes, and Windows reserved name attacks.
+ */
+export class BoxedPath {
     private readonly baseDirectory: string;
-    private readonly defaultFilenamePattern = /^[a-zA-Z0-9._\- ]+$/;
-    
-    // Storage for global configuration
-    private globalOptions: ValidatorOptions = {};
+    // Default: Strict alphanumeric, dots, underscores, and hyphens (No spaces or Unicode by default).
+    private readonly defaultFilenamePattern = /^[a-zA-Z0-9._\-]+$/;
+    private options: BoxedOptions;
 
-    constructor(rootPath: string) {
-        try {
-             if (fs.existsSync(rootPath)) {
-                this.baseDirectory = fs.realpathSync(rootPath);
-             } else {
-                this.baseDirectory = path.resolve(rootPath);
-             }
-        } catch (error) {
-            this.baseDirectory = path.resolve(rootPath);
-        }
+    // Windows Reserved Device Names that can lead to system hangs or denial-of-service.
+    private readonly reservedNames = [
+        'CON', 'PRN', 'AUX', 'NUL',
+        'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9',
+        'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'
+    ];
+
+    constructor(rootPath: string = process.cwd(), options: BoxedOptions = {}) {
+        const resolvedRoot = path.resolve(rootPath);
+        // Canonicalize the root path to ensure we work with physical locations.
+        this.baseDirectory = fs.existsSync(resolvedRoot) ? fs.realpathSync(resolvedRoot) : resolvedRoot;
+        this.options = { allowNewFiles: false, allowedExtensions: [], ...options };
     }
 
     /**
-     * Updates the global configuration.
-     * Merges new options with existing ones.
+     * Checks for known attack patterns before any path resolution occurs.
      */
-    public setGlobalOptions(options: ValidatorOptions): void {
-        const cleanOptions: ValidatorOptions = {};
+    private detectSuspiciousPatterns(input: string): void {
+        // Prevent Null Byte Injection (\0) often used to truncate filenames in lower-level APIs.
+        if (input.includes('\0')) {
+            throw new Error(`Security Violation: Null byte injection detected.`);
+        }
         
-        if (options.allowedExtensions) cleanOptions.allowedExtensions = options.allowedExtensions;
-        if (options.allowNewFiles !== undefined && options.allowNewFiles !== null) cleanOptions.allowNewFiles = options.allowNewFiles;
-        if (options.filenamePattern) cleanOptions.filenamePattern = options.filenamePattern;
+        // Block Tilde (~) expansion which might point to sensitive home directories.
+        if (input.startsWith('~')) {
+            throw new Error(`Security Violation: Home directory escape attempted.`);
+        }
 
-        this.globalOptions = { ...this.globalOptions, ...cleanOptions };
+        // Detect redundant dot patterns and common obfuscation techniques.
+        if (input.includes('././') || input.includes('....')) {
+            throw new Error(`Security Violation: Suspicious path pattern detected.`);
+        }
+
+        // Block leading/trailing whitespace which Windows might strip to bypass filters.
+        if (input.trim() !== input) {
+            throw new Error(`Security Violation: Path contains illegal leading or trailing whitespace.`);
+        }
     }
 
     /**
-     * Resets the global configuration to default secure values.
-     * Clears all custom settings.
+     * Validates the final component of the path against naming policies and OS constraints.
      */
-    public resetGlobalOptions(): void {
-        this.globalOptions = {};
-    }
-
-    private validateFilenameCharacters(input: string, pattern?: RegExp): void {
+    private validateFilename(input: string, pattern?: RegExp): void {
         const fileName = path.basename(input);
-        const regex = pattern || this.globalOptions.filenamePattern || this.defaultFilenamePattern;
+        
+        // Prevent access to Windows reserved names (e.g., CON, NUL) regardless of extension.
+        const firstPart = fileName.split('.')[0] ?? '';
+        const baseNameOnly = firstPart.toUpperCase();
+        if (this.reservedNames.includes(baseNameOnly)) {
+            throw new Error(`Security Violation: Reserved device name '${baseNameOnly}' is forbidden.`);
+        }
 
+        // Apply the naming policy (Default or Custom).
+        const regex = pattern || this.options.filenamePattern || this.defaultFilenamePattern;
         if (!regex.test(fileName)) {
-            throw new Error(`Security Violation: Filename '${fileName}' contains forbidden characters.`);
+            throw new Error(`Security Violation: Filename '${fileName}' violates naming policy.`);
         }
     }
 
-    private validateExtension(filePath: string, allowedExtensions?: string[]): void {
-        if (!allowedExtensions || allowedExtensions.length === 0) return;
+    /**
+     * The main validation logic. Enforces boundary isolation and policy compliance.
+     */
+    public validate(untrustedInput: string, options?: BoxedOptions): ValidatedPath {
+        if (!untrustedInput) throw new Error("Security Violation: Empty path provided.");
 
-        const ext = path.extname(filePath).toLowerCase();
-        if (!allowedExtensions.includes(ext)) {
-            throw new Error(`Security Violation: Extension '${ext}' is not in the allow-list.`);
-        }
-    }
+        // Stage 1: Pre-resolution analysis.
+        this.detectSuspiciousPatterns(untrustedInput);
 
-    public validate(untrustedInput: string, options?: ValidatorOptions): string {
-        // Merge explicit options with global options
-        const effectiveOptions = { ...this.globalOptions, ...options };
+        const effectiveOptions = { ...this.options, ...options };
+        const { allowedExtensions = [], filenamePattern, allowNewFiles = false } = effectiveOptions;
 
-        this.validateFilenameCharacters(untrustedInput, effectiveOptions.filenamePattern);
-
+        // Stage 2: Normalization. Resolve the path relative to the sandbox root.
         let resolvedPath = path.resolve(this.baseDirectory, untrustedInput);
 
-        if (effectiveOptions.allowedExtensions) {
-            this.validateExtension(resolvedPath, effectiveOptions.allowedExtensions);
+        // Stage 3: Boundary Enforcement (Prefix Confusion Fix). 
+        // We append a trailing separator to the baseDirectory to prevent "Prefix Confusion" 
+        // (e.g., preventing '/app' from matching '/app_secret').
+        const normalizedBase = path.normalize(this.baseDirectory);
+        const baseWithSlash = normalizedBase.endsWith(path.sep) ? normalizedBase : normalizedBase + path.sep;
+
+        if (!resolvedPath.startsWith(baseWithSlash) && resolvedPath !== normalizedBase) {
+            throw new Error(`Security Violation: Path traversal or escape detected!`);
         }
 
+        // Stage 4: Filename and Extension validation.
+        this.validateFilename(resolvedPath, filenamePattern);
+
+        if (allowedExtensions.length > 0) {
+            const ext = path.extname(resolvedPath).toLowerCase();
+            if (!allowedExtensions.includes(ext)) {
+                throw new Error(`Security Violation: Forbidden extension '${ext}'.`);
+            }
+        }
+
+        // Stage 5: Filesystem Integrity. Resolve symlinks and verify the real physical location.
         if (fs.existsSync(resolvedPath)) {
             try {
-                resolvedPath = fs.realpathSync(resolvedPath);
-            } catch (error) {
-                throw new Error(`Security Violation: Unable to resolve real path.`);
-            }
-        } else {
-            const allowCreation = effectiveOptions.allowNewFiles === true;
-
-            if (!allowCreation) {
-                 throw new Error(`Security Violation: File does not exist and 'allowNewFiles' is disabled.`);
-            }
-
-            let parentDir = path.dirname(resolvedPath);
-            while (!fs.existsSync(parentDir) && parentDir !== this.baseDirectory && parentDir !== path.parse(parentDir).root) {
-                parentDir = path.dirname(parentDir);
-            }
-
-            if (fs.existsSync(parentDir)) {
-                const realParent = fs.realpathSync(parentDir);
-                if (!realParent.startsWith(this.baseDirectory)) {
-                     throw new Error(`Security Violation: Parent directory traversal detected!`);
+                const real = fs.realpathSync(resolvedPath);
+                // Final boundary check after following symlinks to prevent "Jailbreaking".
+                if (!real.startsWith(baseWithSlash) && real !== normalizedBase) {
+                    throw new Error(`Security Violation: Symlink escape detected.`);
                 }
+                resolvedPath = real;
+            } catch (e) {
+                throw new Error(`Security Violation: Unable to verify physical path.`);
             }
-            
-            if (!resolvedPath.startsWith(this.baseDirectory)) {
-                throw new Error(`Security Violation: Path traversal detected!`);
-            }
-            return resolvedPath;
+        } else if (!allowNewFiles) {
+            // Default Deny: If the file doesn't exist and we don't allow creation, block it.
+            throw new Error(`Security Violation: File does not exist.`);
         }
 
-        if (!resolvedPath.startsWith(this.baseDirectory)) {
-            throw new Error(`Security Violation: Path traversal detected!`);
-        }
-
-        return resolvedPath;
+        return new ValidatedPath(resolvedPath);
     }
 
-    public join(...paths: string[]): string {
-        const unsafePath = path.join(...paths);
-        return this.validate(unsafePath);
+    /**
+     * Secure wrapper for path.join. Validates the result.
+     */
+    public join(...paths: (string | ValidatedPath)[]): ValidatedPath {
+        const stringPaths = paths.map(p => p.toString());
+        return this.validate(path.join(...stringPaths));
     }
 
-    public resolve(...paths: string[]): string {
-        const unsafeResolvedPath = path.resolve(this.baseDirectory, ...paths);
-        return this.validate(unsafeResolvedPath);
+    /**
+     * Secure wrapper for path.resolve. Validates the result relative to the sandbox.
+     */
+    public resolve(...paths: (string | ValidatedPath)[]): ValidatedPath {
+        const stringPaths = paths.map(p => p.toString());
+        return this.validate(path.resolve(this.baseDirectory, ...stringPaths));
     }
 }

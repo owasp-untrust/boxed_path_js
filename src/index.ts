@@ -1,63 +1,34 @@
-import * as path from 'path';
-import { PathValidator, ValidatorOptions } from './validator.js';
+import * as nativePath from 'path';
+import { BoxedPath, ValidatedPath, BoxedOptions } from './validator.js';
+import { fs as secureFs } from './fs.js';
 
-// Create the global singleton validator
-const validator = new PathValidator(process.cwd());
+/**
+ * untrust-ts: Secure-by-design path and filesystem framework.
+ */
 
-export function configure(
-    allowedExtensions?: string[] | null,
-    allowNewFiles?: boolean | null,
-    filenamePattern?: RegExp | null
-): void {
-    const options: ValidatorOptions = {};
+// 1. Export core security classes
+export { BoxedPath, ValidatedPath, BoxedOptions };
 
-    if (allowedExtensions) {
-        options.allowedExtensions = allowedExtensions;
-    }
-    
-    if (allowNewFiles !== null && allowNewFiles !== undefined) {
-        options.allowNewFiles = allowNewFiles;
-    }
+/**
+ * 2. Secure FS Module:
+ * Replacing native 'fs' with a token-enforced wrapper.
+ */
+export const fs = secureFs;
 
-    if (filenamePattern) {
-        options.filenamePattern = filenamePattern;
-    }
-
-    validator.setGlobalOptions(options);
-}
-
-export function reset(): void {
-    validator.resetGlobalOptions();
-}
-
-// Export the secure drop-in replacements
-export const join = (...paths: string[]) => validator.join(...paths);
-export const resolve = (...paths: string[]) => validator.resolve(...paths);
-
-// --- THE FIX: Wrap platform specific namespaces ---
-// This ensures that users can still access path.win32 and path.posix with our secure overrides.
-export const win32 = {
-    ...path.win32,
-    join: (...paths: string[]) => validator.join(...paths),
-    resolve: (...paths: string[]) => validator.resolve(...paths)
+/**
+ * 3. Secure Path Module:
+ * Grouping safe string-manipulation utilities into a single 'path' namespace.
+ * This provides the familiar Node.js DX while omitting dangerous functions
+ * like join() and resolve() which MUST be accessed via BoxedPath.
+ */
+export const path = {
+    basename: nativePath.basename,
+    dirname: nativePath.dirname,
+    extname: nativePath.extname,
+    parse: nativePath.parse,
+    format: nativePath.format,
+    isAbsolute: nativePath.isAbsolute,
+    sep: nativePath.sep,
+    delimiter: nativePath.delimiter,
+    // Note: join and resolve are excluded to enforce Sandbox-only construction
 };
-
-export const posix = {
-    ...path.posix,
-    join: (...paths: string[]) => validator.join(...paths),
-    resolve: (...paths: string[]) => validator.resolve(...paths)
-};
-
-// Re-export standard pass-through functions
-export const basename = path.basename;
-export const dirname = path.dirname;
-export const extname = path.extname;
-export const parse = path.parse;
-export const format = path.format;
-export const isAbsolute = path.isAbsolute;
-export const normalize = path.normalize;
-export const relative = path.relative;
-export const sep = path.sep;
-export const delimiter = path.delimiter;
-
-export { PathValidator };

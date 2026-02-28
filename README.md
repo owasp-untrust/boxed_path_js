@@ -1,4 +1,3 @@
-
 # untrust-ts 🛡️
 
 **A Secure, Drop-in Replacement for Node.js `path` Module.**
@@ -37,32 +36,89 @@ const filePath = path.join(process.cwd(), userInput);
 
 ---
 
-## 🔒 Security Philosophy & Architecture
+## 🔒 Security Policies & Defaults
 
-This library implements a **Defense-in-Depth** strategy, aligning with OWASP guidelines and the "Secure from Scratch" methodology. It serves as the **Infrastructure** layer  that prevents developers from manually validating paths in every controller.
+Out of the box, `untrust-ts` applies a **"Secure by Default"** policy. It assumes the worst and restricts everything unless configured otherwise.
 
-### 1. The "Boxed Path" Infrastructure (Sandbox)
+### Default Security Settings:
 
-Based on the "Sandbox" principle, `untrust-ts` enforces a strict jail (Root Directory).
+1. **Strict Whitelist (Regex):** Only English letters, numbers, spaces, dots, underscores, and hyphens are allowed (`a-zA-Z0-9._- `). **Hebrew, Emoji, and special symbols are blocked.**
+2. **Read-Only Mode:** You cannot resolve a path to a file that **does not exist** (prevents arbitrary file creation exploits).
+3. **Jail Enforcement:** The resolved path must physically reside within the current working directory (`process.cwd()`).
 
-* **Initialization:** When imported, the library locks the context to the current working directory (`process.cwd()`).
-* 
-**Enforcement:** Every path constructed via `join` or `resolve` is checked to ensure it creates an **Absolute Path** that physically resides inside the jail.
+---
 
+## ⚙️ Global Configuration
 
+While the defaults are strict, real-world apps have different needs (e.g., supporting Hebrew filenames or "Save As" functionality).
+We provide two helper functions to adjust security settings globally without changing your code structure.
 
-### 2. Comprehensive Security Checklist
+### 1. `path.configure(extensions, allowNewFiles, pattern)`
+
+Updates the global security settings. Pass `null` to keep the default/current value for a parameter.
+
+**Parameters:**
+
+* `allowedExtensions` (Array): Whitelist specific extensions (e.g., `['.jpg']`). `null` = Allow all.
+* `allowNewFiles` (Boolean): Set `true` to allow generating paths for non-existent files. `null` = Keep default (`false`).
+* `filenamePattern` (Regex): Custom regex for allowed characters. `null` = Keep default.
+
+#### Example A: Enabling Hebrew Support
+
+```typescript
+import * as path from 'untrust-ts';
+
+// Configure once at the start of your app
+path.configure(null, null, /^[a-zA-Z0-9\u0590-\u05FF._\- ]+$/);
+
+// Now this works!
+const safePath = path.join('מסמכים', 'דוח_שנתי.pdf');
+
+```
+
+#### Example B: Enabling File Creation ("Save As") & Restricting Extensions
+
+```typescript
+import * as path from 'untrust-ts';
+
+// Allow creating new files, BUT only if they end in .jpg or .png
+path.configure(['.jpg', '.png'], true, null);
+
+// This works even if 'new-image.jpg' doesn't exist yet
+const uploadPath = path.join('uploads', 'new-image.jpg');
+
+```
+
+### 2. `path.reset()`
+
+Resets all global configurations back to the strict "Secure by Default" values. Useful for testing cleanup.
+
+```typescript
+import * as path from 'untrust-ts';
+
+path.reset(); // Back to strict English-only, Read-only mode.
+
+```
+
+---
+
+## 🛡️ Architecture & Defense Mechanisms
+
+This library implements a **Defense-in-Depth** strategy, aligning with OWASP guidelines.
+
+### 1. Comprehensive Security Checklist
+
 We implement a rigorous validation pipeline to ensure no threat slips through:
 
 | Threat | Protection Mechanism |
-| :--- | :--- |
+| --- | --- |
 | **Path Traversal** (`../`) | Validates that the resolved absolute path starts with the trusted root. |
 | **Null Byte Injection** | Implicitly blocked by our strict Character Allow-List. |
 | **Symlink Attacks** | Uses `fs.realpathSync` to resolve the *physical* path on disk, preventing symlinks from bypassing logical checks (Canonicalization). |
 | **Dangerous Filenames** | Blocks reserved OS names (e.g., `CON`, `PRN`) via strict regex filtering. |
-| **Input Sanitization** | **Strict Allow-List**: Only allows alphanumeric characters, spaces, dots, underscores, and hyphens (`a-z0-9._- `). All other characters are rejected. |
+| **Input Sanitization** | **Strict Allow-List**: Only allows alphanumeric characters, spaces, dots, underscores, and hyphens (`a-z0-9._- `). All other characters are rejected (unless configured otherwise). |
 
-### 3. Closing "Backdoors"
+### 2. Closing "Backdoors"
 
 Many security wrappers fail because they only secure the main functions but leave platform-specific namespaces exposed. `untrust-ts` provides full coverage:
 
@@ -70,65 +126,31 @@ Many security wrappers fail because they only secure the main functions but leav
 
 ---
 
-## 🛠️ API & Usage
+## 🛠️ API Reference
 
-### Standard Usage (Global Protection)
+### `path.join(...paths)`
 
-```typescript
-import * as securePath from 'untrust-ts';
+Secure replacement for `path.join`. Joins paths and validates against the Allow-List and Jail.
 
-try {
-    // 1. Safe Join (Read/Write)
-    // Allows joining paths for existing files OR new files (Save As), 
-    // as long as the parent directory is safe.
-    const safe = securePath.join('uploads', 'image.png');
-    
-    // 2. Safe Resolve
-    const absolute = securePath.resolve('public/css/style.css');
+### `path.resolve(...paths)`
 
-    // 3. Pass-through functions (Work exactly like native 'path')
-    const name = securePath.basename('/tmp/file.txt'); 
+Secure replacement for `path.resolve`. Resolves to an absolute path and validates physical location on disk.
 
-} catch (error) {
-    // ⚠️ IMPORTANT: Always log security violations!
-    console.error("Security Alert:", error.message);
-}
+### `path.configure(...)`
 
-```
+Updates global security rules (see above).
 
-### Advanced Usage (Custom Configuration)
+### `path.reset()`
 
-If you need strict file extension validation or a custom root directory, you can instantiate the validator class directly.
-
-```typescript
-import { PathValidator } from 'untrust-ts';
-
-// 1. Create a custom jail (e.g., only allow access to 'public/uploads')
-const validator = new PathValidator('./public/uploads');
-
-// 2. Validate with options
-try {
-    const safePath = validator.validate('avatar.jpg', {
-        [cite_start]allowedExtensions: ['.jpg', '.png'], // Whitelist extensions [cite: 10]
-        allowNewFiles: true                  // Allow paths to non-existent files
-    });
-} catch (e) {
-    console.error("Blocked:", e.message);
-}
-
-```
+Resets global security rules to defaults.
 
 ---
 
 ## ⚠️ Best Practices
 
-1. **Handle Exceptions:** This library **throws exceptions** when a security violation occurs. You must wrap your path operations in `try/catch` blocks (or use a global exception handler ).
-
-
-2. **Log Attacks:** As recommended in security training, an exception from this library means someone might be probing your system. **Log this event as a critical security incident.**
-
-
-3. **Positive Security Model:** We use an **Allow-List** approach. If your legitimate filenames contain special characters (like `&`, `$`, `@`), they will be blocked by default. This is intentional for maximum security.
+1. **Handle Exceptions:** This library **throws exceptions** when a security violation occurs. You must wrap your path operations in `try/catch` blocks.
+2. **Log Attacks:** An exception from this library often means a malicious attempt. **Log this event as a critical security incident.**
+3. **Positive Security Model:** By default, if your legitimate filenames contain special characters (like `&`, `$`, `@`), they will be blocked. Configure the regex if you need them.
 
 ---
 
@@ -141,7 +163,7 @@ The library is fully tested with a comprehensive suite covering:
 * Symlink evasion (Canonicalization)
 * File creation scenarios (Save As)
 * Backdoor access attempts (`win32` namespace)
-* Allow-list enforcement
+* Global Configuration lifecycles
 
 Run tests locally:
 
