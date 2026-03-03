@@ -1,6 +1,6 @@
 # 🛡️ Untrust-TS: Secure FS Enforcement Framework
 
-**Untrust-TS** is a Node.js library designed to prevent **Path Traversal** and **Symlink Escape** attacks by shifting the architectural paradigm: instead of trying to "sanitize" malicious input strings, the library creates a secure "Sandbox" where only strictly validated paths—converted into `ValidatedPath` tokens—are permitted to access the file system.
+**Untrust-TS** is a Node.js (JavaScript / TypeScript) library designed to prevent **Path Traversal** and **Symlink Escape** attacks by shifting the architectural paradigm: instead of trying to "sanitize" malicious input strings, the library creates a secure "Sandbox" where only strictly validated paths—converted into `ValidatedPath` tokens—are permitted to access the file system.
 
 ## 🚀 Why Use Untrust-TS?
 
@@ -132,5 +132,5 @@ try {
 
 ## 📜 License
 
-This system was developed and distributed under the ISC License.
+This system was developed and distributed under the Apache 2.0 License.
 **Author:** Or Bibi.
