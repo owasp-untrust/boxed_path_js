@@ -1,7 +1,7 @@
 {
   "name": "untrust-ts",
   "version": "1.1.0",
-  "description": "A secure path and FS enforcement framework for Node.js (JS/TS) to prevent Path Traversal by design.",
+  "description": "A secure path and FS enforcement framework for server-side JS/TS environments (Node.js, Deno, Bun) to prevent Path Traversal.",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
   "type": "module",
@@ -25,7 +25,11 @@
     "security",
     "path-traversal",
     "enforcement",
-    "secure-fs"
+    "secure-fs",
+    "nodejs",
+    "deno",
+    "bun",
+    "server-side"
   ],
   "author": "Or Bibi",
   "license": "Apache-2.0",
